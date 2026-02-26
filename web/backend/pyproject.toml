@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cr8tor-backend"
+version = "0.1.0"
+description = "Cr8tor project initiation web app"
+authors = [
+    { name = "Mike Harding", email = "m.harding@lancaster.ac.uk" }
+]
+requires-python = ">=3.8"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "linkml-runtime",
+    "pyyaml",
+    "linkml",
+    "cr8tor @ git+https://github.com/karectl-crates/cr8tor.git@main"
+]
+
+[tool.setuptools]
+py-modules = ["main"]

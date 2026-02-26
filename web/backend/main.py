@@ -1,0 +1,164 @@
+import requests
+import json
+import os
+import yaml
+from pydantic import BaseModel
+
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from linkml.generators.jsonschemagen import JsonSchemaGenerator
+from linkml_runtime.utils.schemaview import SchemaView
+
+from cr8tor_metamodel.datamodel.cr8tor_metamodel_pydantic import Cr8tor
+from cr8tor_metamodel.datamodel import MAIN_SCHEMA_PATH
+from cr8tor.cli.initiate import initiate
+
+app = FastAPI()
+
+sv = SchemaView(MAIN_SCHEMA_PATH)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class InstanceInput(BaseModel):
+    data: dict
+    model: str 
+    subdir: str 
+    filename: str 
+
+class GithubSettings(BaseModel):
+    github_org: str
+    gh_token: str
+    github_repo: str
+    approvals_host: str = ""
+    approvals_port: str = ""
+    approvals_api_token: str = ""
+
+
+
+
+@app.post("/api/validate_github_settings")
+def validate_github_settings(settings: GithubSettings):
+    headers = {
+        "Authorization": f"token {settings.gh_token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    url = f"https://api.github.com/repos/{settings.github_org}/{settings.github_repo}"
+    resp = requests.get(url, headers=headers)
+
+    if resp.status_code == 200:
+        return {"valid": True, "message": "GitHub credentials are valid."}
+    elif resp.status_code == 404:
+        return {"valid": False, "message": "Repository not found or no access. Are github credentials set in settings?"}
+    elif resp.status_code == 401 or resp.status_code == 403:
+        return {"valid": False, "message": "Invalid GitHub token or insufficient permissions."}
+    else:
+        return {"valid": False, "message": f"GitHub API error: {resp.status_code}"}
+    
+@app.post("/api/set_github_settings")
+def set_github_settings(settings: GithubSettings):
+    os.environ["GITHUB_ORG"] = settings.github_org
+    os.environ["GH_TOKEN"] = settings.gh_token
+    os.environ["GITHUB_REPO"] = settings.github_repo
+    os.environ["APPROVALS_HOST"] = settings.approvals_host
+    os.environ["APPROVALS_PORT"] = settings.approvals_port
+    os.environ["APPROVALS_API_TOKEN"] = settings.approvals_api_token
+    return {"status": "success"}
+
+@app.get("/api/cr8tor-settings")
+def cr8tor_settings():
+    return {
+        "GITHUB_ORG": os.getenv("GITHUB_ORG", ""),
+        "GH_TOKEN": os.getenv("GH_TOKEN", ""),
+        "GITHUB_REPO": os.getenv("GITHUB_REPO", ""),
+        "APPROVALS_HOST": os.getenv("APPROVALS_HOST", ""),
+        "APPROVALS_PORT": os.getenv("APPROVALS_PORT", ""),
+        "APPROVALS_API_TOKEN": os.getenv("APPROVALS_API_TOKEN", "")
+    }
+
+@app.post("/api/submit")
+def submit_project_instance(instance: dict):
+    print("\n--- Received /submit payload ---\n" + json.dumps(instance, indent=2) + "\n------------------------------\n")
+
+    # missing = []
+    # if not os.getenv("GITHUB_ORG") or os.getenv("GITHUB_ORG") == "":
+    #     missing.append("GITHUB_ORG")
+    # if not os.getenv("GH_TOKEN") or os.getenv("GH_TOKEN") == "":
+    #     missing.append("GH_TOKEN")
+    # if not os.getenv("GITHUB_REPO") or os.getenv("GITHUB_REPO") == "":
+    #     missing.append("GITHUB_REPO")
+    # if not os.getenv("APPROVALS_HOST") or os.getenv("APPROVALS_HOST") == "":
+    #     missing.append("APPROVALS_HOST")
+    # if not os.getenv("APPROVALS_PORT") or os.getenv("APPROVALS_PORT") == "":
+    #     missing.append("APPROVALS_PORT")
+    # if not os.getenv("APPROVALS_API_TOKEN") or os.getenv("APPROVALS_API_TOKEN") == "":
+    #     missing.append("APPROVALS_API_TOKEN")
+    # if missing:
+    #     raise HTTPException(status_code=400, detail=f"Missing GitHub settings: {', '.join(missing)}")
+
+    try:
+        cr8tor_obj = Cr8tor(**instance)
+        print("Pydantic validation succeeded.")
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Cr8tor project instance validation error: {str(e)}")
+
+
+    proj_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'cache', f"{cr8tor_obj.governance.project.name}"))
+    resources_dir = os.path.join(proj_dir, "resources")
+    os.makedirs(os.path.join(resources_dir, "governance"), exist_ok=True)
+    os.makedirs(os.path.join(resources_dir, "data"), exist_ok=True)
+    os.makedirs(os.path.join(resources_dir, "deployment"), exist_ok=True)
+
+    with open(os.path.join(resources_dir, "governance", 'cr8-governance.yaml'), 'w') as f:
+        yaml.dump(instance.get('governance', {}), f, sort_keys=False)
+    with open(os.path.join(resources_dir, "data", 'cr8-ingress.yaml'), 'w') as f:
+        yaml.dump(instance.get('ingress', {}), f, sort_keys=False)
+    with open(os.path.join(resources_dir, "deployment", 'cr8-deployment.yaml'), 'w') as f:
+        yaml.dump(instance.get('deployment', {}), f, sort_keys=False)
+
+    try:
+        initiate(
+            project_dir=proj_dir,
+            skip_template=True,
+            project_name=f"{cr8tor_obj.governance.project.name}",
+            push_to_github=True,
+            git_org= os.getenv("GITHUB_ORG", ""),
+            runner_os="Linux",
+            environment="DEV",
+            git_projects_repo=os.getenv("GITHUB_REPO", "")
+        )       
+    except Exception as e:
+        print(f"Parameter error: {e}")
+        raise HTTPException(status_code=422, detail=f"Cr8tor project initiate error: {str(e)}")
+
+
+    return JSONResponse({"message": "Instance saved", "directory": proj_dir})
+
+
+@app.get("/api/schema/classes")
+def get_classes():
+    classes = [c.name for c in sv.all_classes().values() if not c.is_a]
+    return {"classes": classes}
+
+@app.get("/api/schema/class/{class_name}")
+def get_class_schema(class_name: str):
+
+    generator = JsonSchemaGenerator(MAIN_SCHEMA_PATH)
+    cr8tor_json_schema = generator.generate()
+    
+    return cr8tor_json_schema
+
+
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+@app.exception_handler(404)
+async def spa_fallback(request, exc):
+    return FileResponse("static/index.html")

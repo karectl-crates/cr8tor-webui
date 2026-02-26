@@ -1,0 +1,1 @@
+{"version":3,"file":"static/css/main.cf50ad53.css","mappings":"AAAA,WACE,0BAA2B,CAC3B,wBAAyB,CACzB,YACF","sources":["users-box.css"],"sourcesContent":[".users-box {\n  background-color: #ffffff3b;\n  border: 5px solid #939599;\n  padding: 1rem;\n}\n"],"names":[],"sourceRoot":""}
