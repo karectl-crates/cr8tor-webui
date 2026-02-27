@@ -1,16 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { withTheme } from '@rjsf/core';
 import { Theme as MaterialUITheme } from '@rjsf/mui';
 import validator from '@rjsf/validator-ajv8';
 import axios from 'axios';
-import { CssBaseline, AppBar, Toolbar, Typography, Button, Container, Card, CardContent, Box, Tabs, Tab } from '@mui/material';
+import {
+  CssBaseline, AppBar, Toolbar, Typography, Button,
+  Container, Card, CardContent, Box, Tabs, Tab,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Paper, Chip
+} from '@mui/material';
 import './users-box.css';
 
 const Form = withTheme(MaterialUITheme);
 
 const WIZARD_STEPS = ['governance', 'ingress', 'deployment'];
-
-const API_URL = 'http://localhost:8000/api';
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 const customUiSchema = {
   governance: {
@@ -230,7 +234,7 @@ function SettingsPage() {
   );
 }
 
-function WizardPage() {
+function WizardPage({ onSubmitSuccess }) {
   const [schema, setSchema] = useState(null);
   const [step, setStep] = useState(0);
   const [stepError, setStepError] = useState(null);
@@ -402,9 +406,9 @@ function WizardPage() {
 
     
     axios.post(`${API_URL}/submit`, cr8torObj)
-      .then(() => {
-        alert('Submitted successfully!');
+      .then((res) => {
         setSubmitError("");
+        if (onSubmitSuccess) onSubmitSuccess(res.data);
       })
       .catch(err => {
         setSubmitError('Submission failed: ' + (err.response?.data?.detail || err.message));
@@ -451,8 +455,128 @@ function WizardPage() {
   );
 }
 
+function ProjectsPage() {
+  const [projects, setProjects] = useState([]);
+  const [prStatuses, setPrStatuses] = useState({});
+  const [triggered, setTriggered] = useState({});
+  const [loadError, setLoadError] = useState(null);
+  const intervalRef = useRef(null);
+
+  const pollStatuses = (projectList) => {
+    projectList.forEach(project => {
+      if (!project.pr_number) return;
+      axios.get(`${API_URL}/projects/${project.name}/pr-status`)
+        .then(res => setPrStatuses(prev => ({ ...prev, [project.name]: res.data })))
+        .catch(err => console.warn(`PR status failed for ${project.name}:`, err.message));
+    });
+  };
+  useEffect(() => {
+    axios.get(`${API_URL}/projects`)
+      .then(res => {
+        const data = res.data || [];
+        setProjects(data);
+        if (data.length > 0) {
+          pollStatuses(data);
+          intervalRef.current = setInterval(() => pollStatuses(data), 10000);
+        }
+      })
+      .catch(err => setLoadError(err.message));
+    return () => clearInterval(intervalRef.current);
+  }, []);
+
+  const handleTrigger = (name) => {
+    axios.post(`${API_URL}/projects/${name}/trigger`)
+      .then(res => setTriggered(prev => ({ ...prev, [name]: res.data.triggered })))
+      .catch(err => {
+        console.warn('Trigger failed:', err.message);
+        setTriggered(prev => ({ ...prev, [name]: false }));
+      });
+  };
+
+  const prChip = (name) => {
+    const prStatus = prStatuses[name];
+    if (!prStatus) return <Chip label="Polling..." size="small" />;
+    if (prStatus.merged) return <Chip label="Merged" color="success" size="small" />;
+    if (prStatus.state === 'open') return <Chip label="Open" color="primary" size="small" />;
+    if (prStatus.state === 'closed') return <Chip label="Closed" size="small" />;
+    return <Chip label="Unknown" size="small" />;
+  };
+
+  const rowActions = (project) => {
+    const prStatus = prStatuses[project.name];
+    const prUrl = prStatus?.pr_url || project.pr_url;
+    if (!prStatus) {
+      return prUrl ? <Button size="small" href={prUrl} target="_blank" rel="noopener noreferrer">View PR</Button> : null;
+    }
+    if (prStatus.merged) {
+      if (triggered[project.name]) {
+        return (
+          <Box display="flex" gap={1} alignItems="center">
+            <Chip label="Pipeline triggered" color="success" size="small" />
+            <Button
+              size="small"
+              href={`https://github.com/${project.github_org}/${project.github_repo}/actions`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >View Actions</Button>
+          </Box>
+        );
+      }
+      if (triggered[project.name] === false) {
+        return <Chip label="Trigger failed" color="error" size="small" />;
+      }
+      return <Button size="small" variant="contained" color="success" onClick={() => handleTrigger(project.name)}>Run Pipeline</Button>;
+    }
+    return prUrl ? <Button size="small" href={prUrl} target="_blank" rel="noopener noreferrer">View PR</Button> : null;
+  };
+
+  return (
+    <Container maxWidth="md" sx={{ mt: 5 }}>
+      <Card elevation={3} sx={{ maxWidth: 900, margin: '0 auto' }}>
+        <CardContent>
+          <Typography variant="h4" color="text.secondary" align="center" gutterBottom>
+            Projects
+          </Typography>
+          {loadError && <Box color="error.main" mb={2}>{loadError}</Box>}
+          {projects.length === 0 ? (
+            <Typography align="center" color="text.secondary">No submitted projects yet.</Typography>
+          ) : (
+            <TableContainer component={Paper} sx={{ mt: 2 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>Project Name</strong></TableCell>
+                    <TableCell><strong>Submitted</strong></TableCell>
+                    <TableCell><strong>PR Status</strong></TableCell>
+                    <TableCell><strong>Action</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {projects.map(project => (
+                    <TableRow key={project.name}>
+                      <TableCell>{project.name}</TableCell>
+                      <TableCell>{project.submitted_at ? new Date(project.submitted_at).toLocaleString() : '—'}</TableCell>
+                      <TableCell>{prChip(project.name)}</TableCell>
+                      <TableCell>{rowActions(project)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </CardContent>
+      </Card>
+    </Container>
+  );
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState(0);
+
+  const handleSubmitSuccess = () => {
+    setActiveTab(2);
+  };
+
   return (
     <>
       <CssBaseline />
@@ -464,10 +588,13 @@ function App() {
           <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} textColor="inherit" indicatorColor="secondary">
             <Tab label="Create Project" />
             <Tab label="Settings" />
+            <Tab label="Projects" />
           </Tabs>
         </Toolbar>
       </AppBar>
-      {activeTab === 0 ? <WizardPage /> : <SettingsPage />}
+      {activeTab === 0 && <WizardPage onSubmitSuccess={handleSubmitSuccess} />}
+      {activeTab === 1 && <SettingsPage />}
+      {activeTab === 2 && <ProjectsPage />}
     </>
   );
 }
