@@ -2,19 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { withTheme } from '@rjsf/core';
 import { Theme as MaterialUITheme } from '@rjsf/mui';
 import validator from '@rjsf/validator-ajv8';
-import axios from 'axios';
+import api from './api';
 import {
-  CssBaseline, AppBar, Toolbar, Typography, Button,
+  CssBaseline, AppBar, Toolbar, Typography, Button, CircularProgress,
   Container, Card, CardContent, Box, Tabs, Tab,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Chip
 } from '@mui/material';
 import './users-box.css';
+import { DEFAULT_DEPLOYMENT, RESOURCE_TYPES } from './defaults';
 
 const Form = withTheme(MaterialUITheme);
 
 const WIZARD_STEPS = ['governance', 'ingress', 'deployment'];
-const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 const customUiSchema = {
   governance: {
@@ -61,7 +61,19 @@ const customUiSchema = {
       }
     }
   },
-  deployment: {}
+  deployment: {
+    resources: {
+      "ui:title": "Resources",
+      items: {
+        resource_type: { "ui:widget": "hidden" },
+        profiles:      { "ui:widget": "hidden" },
+        clients:       { "ui:widget": "hidden" },
+        "ui:options": {
+          anyOfTitles: RESOURCE_TYPES
+        }
+      }
+    }
+  }
 };
 
 function extractStepSchema(schema, step) {
@@ -97,10 +109,8 @@ function SettingsPage() {
   const [approvalsApiToken, setApprovalsApiToken] = useState("");
   const [status, setStatus] = useState("");
   const [validation, setValidation] = useState("");
-  //const API_URL = process.env.REACT_APP_API_URL || '';
-
   useEffect(() => {
-    axios.get(`${API_URL}/cr8tor-settings`)
+    api.get('/cr8tor-settings')
       .then(res => {
         if (res.data) {
           setOrg(res.data.GITHUB_ORG || "");
@@ -112,14 +122,14 @@ function SettingsPage() {
         }
       })
       .catch(() => {});
-  }, [API_URL]);
+  }, []);
 
   const handleUpdate = async (e) => {
     e.preventDefault();
     setStatus("");
     setValidation("");
     try {
-      await axios.post(`${API_URL}/set_github_settings`, {
+      await api.post('/set_github_settings', {
         github_org: org,
         gh_token: ghToken,
         github_repo: repo,
@@ -136,7 +146,7 @@ function SettingsPage() {
   const handleValidate = async () => {
     setValidation("");
     try {
-      const res = await axios.post(`${API_URL}/validate_github_settings`, {
+      const res = await api.post('/validate_github_settings', {
         github_org: org,
         gh_token: ghToken,
         github_repo: repo,
@@ -238,7 +248,7 @@ function WizardPage({ onSubmitSuccess }) {
   const [schema, setSchema] = useState(null);
   const [step, setStep] = useState(0);
   const [stepError, setStepError] = useState(null);
-  const [formData, setFormData] = useState({});
+  const [formData, setFormData] = useState({ deployment: DEFAULT_DEPLOYMENT });
   const [formKey, setFormKey] = useState(0); // force re-render
   const [error, setError] = useState(null);
   const [submitError, setSubmitError] = useState("");
@@ -246,7 +256,7 @@ function WizardPage({ onSubmitSuccess }) {
   // const API_URL = process.env.REACT_APP_API_URL || '';
 
   useEffect(() => {
-    axios.get(`${API_URL}/schema/class/cr8tor`)
+    api.get('/schema/class/cr8tor')
       .then(res => {
         setSchema(res.data);
         setError(null);
@@ -308,7 +318,7 @@ function WizardPage({ onSubmitSuccess }) {
     setIsSubmitting(true);
   
     try {
-      const settingsRes = await axios.get(`${API_URL}/cr8tor-settings`);
+      const settingsRes = await api.get('/cr8tor-settings');
       const github_org = settingsRes.data.GITHUB_ORG;
       const gh_token = settingsRes.data.GH_TOKEN;
       const github_repo = settingsRes.data.GITHUB_REPO;
@@ -316,8 +326,7 @@ function WizardPage({ onSubmitSuccess }) {
       const approvals_port = settingsRes.data.APPROVALS_PORT;
       const approvals_api_token = settingsRes.data.APPROVALS_API_TOKEN;
 
-      
-      const validateRes = await axios.post(`${API_URL}/validate_github_settings`, {
+      const validateRes = await api.post('/validate_github_settings', {
         github_org,
         gh_token,
         github_repo,
@@ -405,7 +414,7 @@ function WizardPage({ onSubmitSuccess }) {
     //     };
 
     
-    axios.post(`${API_URL}/submit`, cr8torObj)
+    api.post('/submit', cr8torObj)
       .then((res) => {
         setSubmitError("");
         if (onSubmitSuccess) onSubmitSuccess(res.data);
@@ -444,8 +453,14 @@ function WizardPage({ onSubmitSuccess }) {
           >
             <Box display="flex" justifyContent="space-between" mt={2}>
               {step > 0 && <Button variant="outlined" onClick={handleBack}>Back</Button>}
-              <Button type="button" variant="contained" onClick={step < WIZARD_STEPS.length-1 ? handleNext : handleSubmit} disabled={isSubmitting}>
-                {step < WIZARD_STEPS.length-1 ? 'Next' : isSubmitting ? 'Submitting...' : 'Submit'}
+              <Button
+                type="button"
+                variant="contained"
+                onClick={step < WIZARD_STEPS.length-1 ? handleNext : handleSubmit}
+                disabled={isSubmitting}
+                startIcon={isSubmitting && step === WIZARD_STEPS.length-1 ? <CircularProgress size={16} color="inherit" /> : null}
+              >
+                {step < WIZARD_STEPS.length-1 ? 'Next' : 'Submit'}
               </Button>
             </Box>
           </Form>
@@ -465,13 +480,13 @@ function ProjectsPage() {
   const pollStatuses = (projectList) => {
     projectList.forEach(project => {
       if (!project.pr_number) return;
-      axios.get(`${API_URL}/projects/${project.name}/pr-status`)
+      api.get(`/projects/${project.name}/pr-status`)
         .then(res => setPrStatuses(prev => ({ ...prev, [project.name]: res.data })))
         .catch(err => console.warn(`PR status failed for ${project.name}:`, err.message));
     });
   };
   useEffect(() => {
-    axios.get(`${API_URL}/projects`)
+    api.get('/projects')
       .then(res => {
         const data = res.data || [];
         setProjects(data);
@@ -485,7 +500,7 @@ function ProjectsPage() {
   }, []);
 
   const handleTrigger = (name) => {
-    axios.post(`${API_URL}/projects/${name}/trigger`)
+    api.post(`/projects/${name}/trigger`)
       .then(res => setTriggered(prev => ({ ...prev, [name]: res.data.triggered })))
       .catch(err => {
         console.warn('Trigger failed:', err.message);

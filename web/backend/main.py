@@ -32,6 +32,13 @@ app.add_middleware(
 
 PROJECTS_FILE = os.path.join(os.path.dirname(__file__), 'cache', 'projects.json')
 
+def strip_nulls(obj):
+    if isinstance(obj, dict):
+        return {k: strip_nulls(v) for k, v in obj.items() if v is not None}
+    if isinstance(obj, list):
+        return [strip_nulls(item) for item in obj]
+    return obj
+
 def load_projects():
     if not os.path.exists(PROJECTS_FILE):
         return {}
@@ -135,11 +142,11 @@ def submit_project_instance(instance: dict):
     os.makedirs(os.path.join(resources_dir, "deployment"), exist_ok=True)
 
     with open(os.path.join(resources_dir, "governance", 'cr8-governance.yaml'), 'w') as f:
-        yaml.dump(instance.get('governance', {}), f, sort_keys=False)
+        yaml.dump(strip_nulls(instance.get('governance', {})), f, sort_keys=False)
     with open(os.path.join(resources_dir, "data", 'cr8-ingress.yaml'), 'w') as f:
-        yaml.dump(instance.get('ingress', {}), f, sort_keys=False)
+        yaml.dump(strip_nulls(instance.get('ingress', {})), f, sort_keys=False)
     with open(os.path.join(resources_dir, "deployment", 'cr8-deployment.yaml'), 'w') as f:
-        yaml.dump(instance.get('deployment', {}), f, sort_keys=False)
+        yaml.dump(strip_nulls(instance.get('deployment', {})), f, sort_keys=False)
 
     # TODO: Set via settings provided
     bagit_data = {
