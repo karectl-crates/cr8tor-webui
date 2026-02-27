@@ -2,6 +2,7 @@ import requests
 import json
 import os
 import yaml
+import toml
 from pydantic import BaseModel
 
 from fastapi.staticfiles import StaticFiles
@@ -123,6 +124,19 @@ def submit_project_instance(instance: dict):
         yaml.dump(instance.get('ingress', {}), f, sort_keys=False)
     with open(os.path.join(resources_dir, "deployment", 'cr8-deployment.yaml'), 'w') as f:
         yaml.dump(instance.get('deployment', {}), f, sort_keys=False)
+
+    # TODO: Set via settings provided
+    bagit_data = {
+        "bagit-info": {
+            "Source-Organization": "Acme Organization",
+            "Organization-Address": "Acme Street",
+            "Contact-Name": "Cr8tor Team",
+            "Contact-Email": "acme@cr8tor.com"
+        }
+    }
+
+    with open(os.path.join(proj_dir, 'config.toml'), "w") as f:
+        toml.dump(bagit_data, f)
 
     try:
         initiate(

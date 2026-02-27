@@ -4,7 +4,6 @@ import { Theme as MaterialUITheme } from '@rjsf/mui';
 import validator from '@rjsf/validator-ajv8';
 import axios from 'axios';
 import { CssBaseline, AppBar, Toolbar, Typography, Button, Container, Card, CardContent, Box, Tabs, Tab } from '@mui/material';
-import ArrayFieldTemplate from './ArrayFieldTemplate';
 import './users-box.css';
 
 const Form = withTheme(MaterialUITheme);
@@ -156,65 +155,68 @@ function SettingsPage() {
           </Typography>
           <Box component="form" onSubmit={handleUpdate} sx={{ mt: 3 }}>
             <Box mb={2}>
-              <Typography>GitHub Organisation Name</Typography>
+              <Typography sx={{ fontWeight: 'bold' }}>Cr8tor GitHub</Typography>
               <input
                 type="text"
                 value={org}
                 onChange={e => setOrg(e.target.value)}
                 style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid #ccc' }}
                 required
+                placeholder="Github Organisation e.g. karectl-crates"
               />
             </Box>
             <Box mb={2}>
-              <Typography>GitHub Token (GH_TOKEN)</Typography>
-              <input
-                type="password"
-                value={ghToken}
-                onChange={e => setGhToken(e.target.value)}
-                style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid #ccc' }}
-                required
-              />
-            </Box>
-            <Box mb={2}>
-              <Typography>Approvals Host</Typography>
-              <input
-                type="text"
-                value={approvalsHost}
-                onChange={e => setApprovalsHost(e.target.value)}
-                style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid #ccc' }}
-                required
-              />
-            </Box>
-            <Box mb={2}>
-              <Typography>Approvals Port</Typography>
-              <input
-                type="text"
-                value={approvalsPort}
-                onChange={e => setApprovalsPort(e.target.value)}
-                style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid #ccc' }}
-                required
-              />
-            </Box>
-            <Box mb={2}>
-              <Typography>Approvals API Token</Typography>
-              <input
-                type="password"
-                value={approvalsApiToken}
-                onChange={e => setApprovalsApiToken(e.target.value)}
-                style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid #ccc' }}
-                required
-              />
-            </Box>
-            <Box mb={2}>
-              <Typography>GitHub Projects Repository Name</Typography>
               <input
                 type="text"
                 value={repo}
                 onChange={e => setRepo(e.target.value)}
                 style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid #ccc' }}
                 required
+                placeholder="Projects Repository e.g. cr8tor-projects"
               />
             </Box>
+            <Box mb={2}>
+              <input
+                type="password"
+                value={ghToken}
+                onChange={e => setGhToken(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid #ccc' }}
+                required
+                placeholder="Github Token"
+              />
+            </Box>
+            <Box mb={2}>
+              <Typography sx={{ fontWeight: 'bold' }}>Cr8tor Cluster Service (Optional)</Typography>
+              <input
+                type="text"
+                value={approvalsHost}
+                onChange={e => setApprovalsHost(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid #ccc' }}
+              
+                placeholder="Host e.g. https://cr8tor.k8tre.org"
+              />
+            </Box>
+            <Box mb={2}>
+              <input
+                type="text"
+                value={approvalsPort}
+                onChange={e => setApprovalsPort(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid #ccc' }}
+           
+                placeholder="Port e.g. 80"
+              />
+            </Box>
+            <Box mb={2}>
+              <input
+                type="password"
+                value={approvalsApiToken}
+                onChange={e => setApprovalsApiToken(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid #ccc' }}
+              
+                placeholder="Auth Token"
+              />
+            </Box>
+
             <Box display="flex" gap={2} alignItems="center">
               <Button type="submit" variant="contained" color="primary">Update</Button>
               <Button type="button" variant="outlined" color="secondary" onClick={handleValidate}>Validate Credentials</Button>

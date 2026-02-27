@@ -9,14 +9,15 @@ description = "Cr8tor project initiation web app"
 authors = [
     { name = "Mike Harding", email = "m.harding@lancaster.ac.uk" }
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 dependencies = [
-    "fastapi",
+    "fastapi[standard]",
     "uvicorn",
     "linkml-runtime",
     "pyyaml",
     "linkml",
-    "cr8tor @ git+https://github.com/karectl-crates/cr8tor.git@main"
+    "cr8tor @ git+https://github.com/karectl-crates/cr8tor.git@main",
+    "cr8tor-metamodel @ git+https://github.com/karectl-crates/cr8tor-metamodel.git@main"
 ]
 
 [tool.setuptools]

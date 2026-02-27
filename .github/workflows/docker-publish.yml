@@ -2,8 +2,8 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'           
   workflow_dispatch:
 
 jobs:
@@ -29,13 +29,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Get version from Git tag
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository }}/cr8tor-webui:latest
+          tags: |
+            ghcr.io/${{ github.repository }}/cr8tor-webui:latest
+            ghcr.io/${{ github.repository }}/cr8tor-webui:${{ env.VERSION }}
 
       - name: Post build info
-        run: echo "Docker image pushed to ghcr.io/${{ github.repository }}/cr8tor-webui:latest"
+        run: |
+          echo "Docker image pushed to:"
+          echo "  ghcr.io/${{ github.repository }}/cr8tor-webui:latest"
+          echo "  ghcr.io/${{ github.repository }}/cr8tor-webui:${{ env.VERSION }}"
