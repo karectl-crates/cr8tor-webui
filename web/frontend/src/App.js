@@ -477,26 +477,32 @@ function ProjectsPage() {
   const [loadError, setLoadError] = useState(null);
   const intervalRef = useRef(null);
 
-  const pollStatuses = (projectList) => {
+  const pollStatuses = (projectList, isMounted) => {
     projectList.forEach(project => {
       if (!project.pr_number) return;
       api.get(`/projects/${project.name}/pr-status`)
-        .then(res => setPrStatuses(prev => ({ ...prev, [project.name]: res.data })))
+        .then(res => { if (isMounted.current) setPrStatuses(prev => ({ ...prev, [project.name]: res.data })); })
         .catch(err => console.warn(`PR status failed for ${project.name}:`, err.message));
     });
   };
   useEffect(() => {
+    const isMounted = { current: true };
+    clearInterval(intervalRef.current);
     api.get('/projects')
       .then(res => {
+        if (!isMounted.current) return;
         const data = res.data || [];
         setProjects(data);
         if (data.length > 0) {
-          pollStatuses(data);
-          intervalRef.current = setInterval(() => pollStatuses(data), 10000);
+          pollStatuses(data, isMounted);
+          intervalRef.current = setInterval(() => pollStatuses(data, isMounted), 10000);
         }
       })
-      .catch(err => setLoadError(err.message));
-    return () => clearInterval(intervalRef.current);
+      .catch(err => { if (isMounted.current) setLoadError(err.message); });
+    return () => {
+      isMounted.current = false;
+      clearInterval(intervalRef.current);
+    };
   }, []);
 
   const handleTrigger = (name) => {

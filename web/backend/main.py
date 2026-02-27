@@ -36,7 +36,7 @@ def strip_nulls(obj):
     if isinstance(obj, dict):
         return {k: strip_nulls(v) for k, v in obj.items() if v is not None}
     if isinstance(obj, list):
-        return [strip_nulls(item) for item in obj]
+        return [strip_nulls(item) for item in obj if item is not None]
     return obj
 
 def load_projects():
@@ -261,15 +261,19 @@ def trigger_pipeline(name):
     org = project["github_org"]
     repo = project["github_repo"]
     environment = project.get("environment", "DEV")
-    resp = requests.post(
-        f"https://api.github.com/repos/{org}/{repo}/actions/workflows/trigger-project-workflow.yaml/dispatches",
-        headers={
-            "Authorization": f"token {os.getenv('GH_TOKEN', '')}",
-            "Accept": "application/vnd.github+json"
-        },
-        json={"ref": "main", "inputs": {"project": name, "environment": environment}},
-        timeout=10
-    )
+    try:
+        resp = requests.post(
+            f"https://api.github.com/repos/{org}/{repo}/actions/workflows/trigger-project-workflow.yaml/dispatches",
+            headers={
+                "Authorization": f"token {os.getenv('GH_TOKEN', '')}",
+                "Accept": "application/vnd.github+json"
+            },
+            json={"ref": "main", "inputs": {"project": name, "environment": environment}},
+            timeout=10
+        )
+    except Exception as e:
+        print(f"Trigger pipeline failed: {e}")
+        return {"triggered": False, "error": str(e)}
     if resp.status_code == 204:
         return {"triggered": True}
     return {"triggered": False, "error": resp.text}
