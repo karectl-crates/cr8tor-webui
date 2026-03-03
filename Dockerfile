@@ -51,7 +51,7 @@ COPY --from=frontend-build /app/build ./static
 
 ENTRYPOINT []
 
-RUN chown -R 999:999 /app
+RUN mkdir -p /app/cache && chown -R 999:999 /app && chmod 750 /app/cache
 USER nonroot
 
 EXPOSE 8000

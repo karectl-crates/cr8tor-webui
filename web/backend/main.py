@@ -3,6 +3,7 @@ import json
 import os
 import yaml
 import toml
+from datetime import datetime, timezone
 from pydantic import BaseModel
 
 from fastapi.staticfiles import StaticFiles
@@ -28,6 +29,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+PROJECTS_FILE = os.path.join(os.path.dirname(__file__), 'cache', 'projects.json')
+
+def strip_nulls(obj):
+    if isinstance(obj, dict):
+        return {k: strip_nulls(v) for k, v in obj.items() if v is not None}
+    if isinstance(obj, list):
+        return [strip_nulls(item) for item in obj if item is not None]
+    return obj
+
+def load_projects():
+    if not os.path.exists(PROJECTS_FILE):
+        return {}
+
+    with open(PROJECTS_FILE) as f:
+        return json.load(f)
+
+def save_projects(projects):
+    os.makedirs(os.path.dirname(PROJECTS_FILE), exist_ok=True)
+    with open(PROJECTS_FILE, 'w') as f:
+        json.dump(projects, f, indent=2)
+
 
 class InstanceInput(BaseModel):
     data: dict
@@ -119,11 +142,11 @@ def submit_project_instance(instance: dict):
     os.makedirs(os.path.join(resources_dir, "deployment"), exist_ok=True)
 
     with open(os.path.join(resources_dir, "governance", 'cr8-governance.yaml'), 'w') as f:
-        yaml.dump(instance.get('governance', {}), f, sort_keys=False)
+        yaml.dump(strip_nulls(instance.get('governance', {})), f, sort_keys=False)
     with open(os.path.join(resources_dir, "data", 'cr8-ingress.yaml'), 'w') as f:
-        yaml.dump(instance.get('ingress', {}), f, sort_keys=False)
+        yaml.dump(strip_nulls(instance.get('ingress', {})), f, sort_keys=False)
     with open(os.path.join(resources_dir, "deployment", 'cr8-deployment.yaml'), 'w') as f:
-        yaml.dump(instance.get('deployment', {}), f, sort_keys=False)
+        yaml.dump(strip_nulls(instance.get('deployment', {})), f, sort_keys=False)
 
     # TODO: Set via settings provided
     bagit_data = {
@@ -138,23 +161,122 @@ def submit_project_instance(instance: dict):
     with open(os.path.join(proj_dir, 'config.toml'), "w") as f:
         toml.dump(bagit_data, f)
 
+    github_org = os.getenv("GITHUB_ORG", "")
+    github_repo = os.getenv("GITHUB_REPO", "")
+    environment = "DEV"
+    project_name = cr8tor_obj.governance.project.name
+
     try:
         initiate(
             project_dir=proj_dir,
             skip_template=True,
-            project_name=f"{cr8tor_obj.governance.project.name}",
+            project_name=project_name,
             push_to_github=True,
-            git_org= os.getenv("GITHUB_ORG", ""),
+            git_org=github_org,
             runner_os="Linux",
-            environment="DEV",
-            git_projects_repo=os.getenv("GITHUB_REPO", "")
-        )       
+            environment=environment,
+            git_projects_repo=github_repo
+        )
     except Exception as e:
         print(f"Parameter error: {e}")
         raise HTTPException(status_code=422, detail=f"Cr8tor project initiate error: {str(e)}")
 
+    # Get the PR that we created by branch name
+    pr_url = None
+    pr_number = None
+    try:
+        branch = f"add-project-{project_name}"
+        resp = requests.get(
+            f"https://api.github.com/repos/{github_org}/{github_repo}/pulls",
+            params={"head": f"{github_org}:{branch}", "state": "open"},
+            headers={"Authorization": f"token {os.getenv('GH_TOKEN', '')}"},
+            timeout=10
+        )
+        if resp.ok and resp.json():
+            pr_data = resp.json()[0]
+            pr_url = pr_data.get("html_url")
+            pr_number = pr_data.get("number")
+    except Exception as e:
+        print(f"Could not fetch PR info: {e}")
 
-    return JSONResponse({"message": "Instance saved", "directory": proj_dir})
+    # Persist project state
+    projects = load_projects()
+    projects[project_name] = {
+        "pr_url": pr_url,
+        "pr_number": pr_number,
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
+        "environment": environment,
+        "github_org": github_org,
+        "github_repo": github_repo
+    }
+    save_projects(projects)
+
+    return JSONResponse({
+        "message": "Instance saved",
+        "directory": proj_dir,
+        "pr_url": pr_url,
+        "pr_number": pr_number
+    })
+
+
+@app.get("/api/projects")
+def get_projects():
+    projects = load_projects()
+    return [{"name": name, **data} for name, data in projects.items()]
+
+
+@app.get("/api/projects/{name}/pr-status")
+def get_pr_status(name):
+    projects = load_projects()
+    if name not in projects:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    project = projects[name]
+    try:
+        resp = requests.get(
+            f"https://api.github.com/repos/{project['github_org']}/{project['github_repo']}/pulls/{project['pr_number']}",
+            headers={"Authorization": f"token {os.getenv('GH_TOKEN', '')}"},
+            timeout=10
+        )
+        if not resp.ok:
+            return {"state": "unknown", "merged": False, "pr_url": project.get("pr_url")}
+        data = resp.json()
+        return {
+            "state": data.get("state"),
+            "merged": data.get("merged", False),
+            "pr_url": project.get("pr_url")
+        }
+    except Exception as e:
+        print(f"PR status check failed: {e}")
+        return {"state": "unknown", "merged": False, "pr_url": project.get("pr_url")}
+
+
+@app.post("/api/projects/{name}/trigger")
+def trigger_pipeline(name):
+    projects = load_projects()
+    if name not in projects:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    project = projects[name]
+    org = project["github_org"]
+    repo = project["github_repo"]
+    environment = project.get("environment", "DEV")
+    try:
+        resp = requests.post(
+            f"https://api.github.com/repos/{org}/{repo}/actions/workflows/trigger-project-workflow.yaml/dispatches",
+            headers={
+                "Authorization": f"token {os.getenv('GH_TOKEN', '')}",
+                "Accept": "application/vnd.github+json"
+            },
+            json={"ref": "main", "inputs": {"project": name, "environment": environment}},
+            timeout=10
+        )
+    except Exception as e:
+        print(f"Trigger pipeline failed: {e}")
+        return {"triggered": False, "error": str(e)}
+    if resp.status_code == 204:
+        return {"triggered": True}
+    return {"triggered": False, "error": resp.text}
 
 
 @app.get("/api/schema/classes")

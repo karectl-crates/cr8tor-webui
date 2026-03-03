@@ -1,16 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { withTheme } from '@rjsf/core';
 import { Theme as MaterialUITheme } from '@rjsf/mui';
 import validator from '@rjsf/validator-ajv8';
-import axios from 'axios';
-import { CssBaseline, AppBar, Toolbar, Typography, Button, Container, Card, CardContent, Box, Tabs, Tab } from '@mui/material';
+import api from './api';
+import {
+  CssBaseline, AppBar, Toolbar, Typography, Button, CircularProgress,
+  Container, Card, CardContent, Box, Tabs, Tab,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Paper, Chip
+} from '@mui/material';
 import './users-box.css';
+import { DEFAULT_DEPLOYMENT, RESOURCE_TYPES } from './defaults';
 
 const Form = withTheme(MaterialUITheme);
 
 const WIZARD_STEPS = ['governance', 'ingress', 'deployment'];
-
-const API_URL = 'http://localhost:8000/api';
 
 const customUiSchema = {
   governance: {
@@ -57,7 +61,19 @@ const customUiSchema = {
       }
     }
   },
-  deployment: {}
+  deployment: {
+    resources: {
+      "ui:title": "Resources",
+      items: {
+        resource_type: { "ui:widget": "hidden" },
+        profiles:      { "ui:widget": "hidden" },
+        clients:       { "ui:widget": "hidden" },
+        "ui:options": {
+          anyOfTitles: RESOURCE_TYPES
+        }
+      }
+    }
+  }
 };
 
 function extractStepSchema(schema, step) {
@@ -93,10 +109,8 @@ function SettingsPage() {
   const [approvalsApiToken, setApprovalsApiToken] = useState("");
   const [status, setStatus] = useState("");
   const [validation, setValidation] = useState("");
-  //const API_URL = process.env.REACT_APP_API_URL || '';
-
   useEffect(() => {
-    axios.get(`${API_URL}/cr8tor-settings`)
+    api.get('/cr8tor-settings')
       .then(res => {
         if (res.data) {
           setOrg(res.data.GITHUB_ORG || "");
@@ -108,14 +122,14 @@ function SettingsPage() {
         }
       })
       .catch(() => {});
-  }, [API_URL]);
+  }, []);
 
   const handleUpdate = async (e) => {
     e.preventDefault();
     setStatus("");
     setValidation("");
     try {
-      await axios.post(`${API_URL}/set_github_settings`, {
+      await api.post('/set_github_settings', {
         github_org: org,
         gh_token: ghToken,
         github_repo: repo,
@@ -132,7 +146,7 @@ function SettingsPage() {
   const handleValidate = async () => {
     setValidation("");
     try {
-      const res = await axios.post(`${API_URL}/validate_github_settings`, {
+      const res = await api.post('/validate_github_settings', {
         github_org: org,
         gh_token: ghToken,
         github_repo: repo,
@@ -230,11 +244,11 @@ function SettingsPage() {
   );
 }
 
-function WizardPage() {
+function WizardPage({ onSubmitSuccess }) {
   const [schema, setSchema] = useState(null);
   const [step, setStep] = useState(0);
   const [stepError, setStepError] = useState(null);
-  const [formData, setFormData] = useState({});
+  const [formData, setFormData] = useState({ deployment: DEFAULT_DEPLOYMENT });
   const [formKey, setFormKey] = useState(0); // force re-render
   const [error, setError] = useState(null);
   const [submitError, setSubmitError] = useState("");
@@ -242,7 +256,7 @@ function WizardPage() {
   // const API_URL = process.env.REACT_APP_API_URL || '';
 
   useEffect(() => {
-    axios.get(`${API_URL}/schema/class/cr8tor`)
+    api.get('/schema/class/cr8tor')
       .then(res => {
         setSchema(res.data);
         setError(null);
@@ -304,7 +318,7 @@ function WizardPage() {
     setIsSubmitting(true);
   
     try {
-      const settingsRes = await axios.get(`${API_URL}/cr8tor-settings`);
+      const settingsRes = await api.get('/cr8tor-settings');
       const github_org = settingsRes.data.GITHUB_ORG;
       const gh_token = settingsRes.data.GH_TOKEN;
       const github_repo = settingsRes.data.GITHUB_REPO;
@@ -312,8 +326,7 @@ function WizardPage() {
       const approvals_port = settingsRes.data.APPROVALS_PORT;
       const approvals_api_token = settingsRes.data.APPROVALS_API_TOKEN;
 
-      
-      const validateRes = await axios.post(`${API_URL}/validate_github_settings`, {
+      const validateRes = await api.post('/validate_github_settings', {
         github_org,
         gh_token,
         github_repo,
@@ -401,10 +414,10 @@ function WizardPage() {
     //     };
 
     
-    axios.post(`${API_URL}/submit`, cr8torObj)
-      .then(() => {
-        alert('Submitted successfully!');
+    api.post('/submit', cr8torObj)
+      .then((res) => {
         setSubmitError("");
+        if (onSubmitSuccess) onSubmitSuccess(res.data);
       })
       .catch(err => {
         setSubmitError('Submission failed: ' + (err.response?.data?.detail || err.message));
@@ -440,8 +453,14 @@ function WizardPage() {
           >
             <Box display="flex" justifyContent="space-between" mt={2}>
               {step > 0 && <Button variant="outlined" onClick={handleBack}>Back</Button>}
-              <Button type="button" variant="contained" onClick={step < WIZARD_STEPS.length-1 ? handleNext : handleSubmit} disabled={isSubmitting}>
-                {step < WIZARD_STEPS.length-1 ? 'Next' : isSubmitting ? 'Submitting...' : 'Submit'}
+              <Button
+                type="button"
+                variant="contained"
+                onClick={step < WIZARD_STEPS.length-1 ? handleNext : handleSubmit}
+                disabled={isSubmitting}
+                startIcon={isSubmitting && step === WIZARD_STEPS.length-1 ? <CircularProgress size={16} color="inherit" /> : null}
+              >
+                {step < WIZARD_STEPS.length-1 ? 'Next' : 'Submit'}
               </Button>
             </Box>
           </Form>
@@ -451,8 +470,134 @@ function WizardPage() {
   );
 }
 
+function ProjectsPage() {
+  const [projects, setProjects] = useState([]);
+  const [prStatuses, setPrStatuses] = useState({});
+  const [triggered, setTriggered] = useState({});
+  const [loadError, setLoadError] = useState(null);
+  const intervalRef = useRef(null);
+
+  const pollStatuses = (projectList, isMounted) => {
+    projectList.forEach(project => {
+      if (!project.pr_number) return;
+      api.get(`/projects/${project.name}/pr-status`)
+        .then(res => { if (isMounted.current) setPrStatuses(prev => ({ ...prev, [project.name]: res.data })); })
+        .catch(err => console.warn(`PR status failed for ${project.name}:`, err.message));
+    });
+  };
+  useEffect(() => {
+    const isMounted = { current: true };
+    clearInterval(intervalRef.current);
+    api.get('/projects')
+      .then(res => {
+        if (!isMounted.current) return;
+        const data = res.data || [];
+        setProjects(data);
+        if (data.length > 0) {
+          pollStatuses(data, isMounted);
+          intervalRef.current = setInterval(() => pollStatuses(data, isMounted), 10000);
+        }
+      })
+      .catch(err => { if (isMounted.current) setLoadError(err.message); });
+    return () => {
+      isMounted.current = false;
+      clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  const handleTrigger = (name) => {
+    api.post(`/projects/${name}/trigger`)
+      .then(res => setTriggered(prev => ({ ...prev, [name]: res.data.triggered })))
+      .catch(err => {
+        console.warn('Trigger failed:', err.message);
+        setTriggered(prev => ({ ...prev, [name]: false }));
+      });
+  };
+
+  const prChip = (name) => {
+    const prStatus = prStatuses[name];
+    if (!prStatus) return <Chip label="Polling..." size="small" />;
+    if (prStatus.merged) return <Chip label="Merged" color="success" size="small" />;
+    if (prStatus.state === 'open') return <Chip label="Open" color="primary" size="small" />;
+    if (prStatus.state === 'closed') return <Chip label="Closed" size="small" />;
+    return <Chip label="Unknown" size="small" />;
+  };
+
+  const rowActions = (project) => {
+    const prStatus = prStatuses[project.name];
+    const prUrl = prStatus?.pr_url || project.pr_url;
+    if (!prStatus) {
+      return prUrl ? <Button size="small" href={prUrl} target="_blank" rel="noopener noreferrer">View PR</Button> : null;
+    }
+    if (prStatus.merged) {
+      if (triggered[project.name]) {
+        return (
+          <Box display="flex" gap={1} alignItems="center">
+            <Chip label="Pipeline triggered" color="success" size="small" />
+            <Button
+              size="small"
+              href={`https://github.com/${project.github_org}/${project.github_repo}/actions`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >View Actions</Button>
+          </Box>
+        );
+      }
+      if (triggered[project.name] === false) {
+        return <Chip label="Trigger failed" color="error" size="small" />;
+      }
+      return <Button size="small" variant="contained" color="success" onClick={() => handleTrigger(project.name)}>Run Pipeline</Button>;
+    }
+    return prUrl ? <Button size="small" href={prUrl} target="_blank" rel="noopener noreferrer">View PR</Button> : null;
+  };
+
+  return (
+    <Container maxWidth="md" sx={{ mt: 5 }}>
+      <Card elevation={3} sx={{ maxWidth: 900, margin: '0 auto' }}>
+        <CardContent>
+          <Typography variant="h4" color="text.secondary" align="center" gutterBottom>
+            Projects
+          </Typography>
+          {loadError && <Box color="error.main" mb={2}>{loadError}</Box>}
+          {projects.length === 0 ? (
+            <Typography align="center" color="text.secondary">No submitted projects yet.</Typography>
+          ) : (
+            <TableContainer component={Paper} sx={{ mt: 2 }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>Project Name</strong></TableCell>
+                    <TableCell><strong>Submitted</strong></TableCell>
+                    <TableCell><strong>PR Status</strong></TableCell>
+                    <TableCell><strong>Action</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {projects.map(project => (
+                    <TableRow key={project.name}>
+                      <TableCell>{project.name}</TableCell>
+                      <TableCell>{project.submitted_at ? new Date(project.submitted_at).toLocaleString() : '—'}</TableCell>
+                      <TableCell>{prChip(project.name)}</TableCell>
+                      <TableCell>{rowActions(project)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </CardContent>
+      </Card>
+    </Container>
+  );
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState(0);
+
+  const handleSubmitSuccess = () => {
+    setActiveTab(2);
+  };
+
   return (
     <>
       <CssBaseline />
@@ -464,10 +609,13 @@ function App() {
           <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} textColor="inherit" indicatorColor="secondary">
             <Tab label="Create Project" />
             <Tab label="Settings" />
+            <Tab label="Projects" />
           </Tabs>
         </Toolbar>
       </AppBar>
-      {activeTab === 0 ? <WizardPage /> : <SettingsPage />}
+      {activeTab === 0 && <WizardPage onSubmitSuccess={handleSubmitSuccess} />}
+      {activeTab === 1 && <SettingsPage />}
+      {activeTab === 2 && <ProjectsPage />}
     </>
   );
 }

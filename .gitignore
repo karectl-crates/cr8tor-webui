@@ -1,7 +1,9 @@
 __pycache__/
 *.pyc
 .env
-cache/*
+cache/
 node_modules/
 .venv/
 build/
+web/backend/*.egg-info/
+web/backend/uv.lock
