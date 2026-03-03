@@ -7,7 +7,7 @@ import {
   CssBaseline, AppBar, Toolbar, Typography, Button, CircularProgress,
   Container, Card, CardContent, Box, Tabs, Tab,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Paper, Chip
+  Paper, Chip, TextField
 } from '@mui/material';
 import './users-box.css';
 import { DEFAULT_DEPLOYMENT, RESOURCE_TYPES } from './defaults';
@@ -16,11 +16,46 @@ const Form = withTheme(MaterialUITheme);
 
 const WIZARD_STEPS = ['governance', 'ingress', 'deployment'];
 
+const PROJECT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+function ProjectNameWidget({
+  id, value, onChange, onBlur, onFocus,
+  label, required, disabled, readonly, autofocus
+}) {
+  const [dirty, setDirty] = useState(false);
+  const isInvalid = !!value && !PROJECT_NAME_PATTERN.test(value);
+  const showError = dirty && isInvalid;
+
+  return (
+    <TextField
+      id={id}
+      fullWidth
+      label={label}
+      required={required}
+      disabled={disabled}
+      readOnly={readonly}
+      autoFocus={autofocus}
+      value={value || ''}
+      onChange={(e) => { setDirty(true); onChange(e.target.value); }}
+      onBlur={(e) => { setDirty(true); onBlur(id, e.target.value); }}
+      onFocus={(e) => onFocus(id, e.target.value)}
+      error={showError}
+      helperText={showError ? 'Lowercase letters, numbers and hyphens only. No spaces.' : ' '}
+      placeholder="e.g. my-project-2025"
+      variant="outlined"
+    />
+  );
+}
+
 const customUiSchema = {
   governance: {
     project: {
       id: { "ui:widget": "hidden" },
-      name: { "ui:title": "Name" },
+      name: {
+        "ui:title": "Project Name",
+        "ui:widget": "ProjectNameWidget",
+        "ui:description": "",
+      },
       reference: { "ui:title": "Reference" },
       description: { "ui:title": "Description" },
       start_time: { "ui:widget": "hidden" },
@@ -275,6 +310,15 @@ function WizardPage({ onSubmitSuccess }) {
 
   const handleNext = () => {
     const currentData = formData[currentStep] || {};
+
+    if (currentStep === 'governance') {
+      const projectName = currentData?.project?.name || '';
+      if (projectName && !PROJECT_NAME_PATTERN.test(projectName)) {
+        setStepError('Project Name must use lowercase letters, numbers and hyphens only. No spaces. e.g. my-project-2025');
+        return;
+      }
+    }
+
     const validation = validator.validateFormData(currentData, stepSchema);
 
     console.log(validation.errors);
@@ -450,6 +494,7 @@ function WizardPage({ onSubmitSuccess }) {
             onSubmit={step === WIZARD_STEPS.length-1 ? handleSubmit : undefined}
             liveValidate={false}
             noHtml5Validate={true}
+            widgets={{ ProjectNameWidget }}
           >
             <Box display="flex" justifyContent="space-between" mt={2}>
               {step > 0 && <Button variant="outlined" onClick={handleBack}>Back</Button>}
