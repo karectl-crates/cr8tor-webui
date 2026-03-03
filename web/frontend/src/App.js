@@ -18,7 +18,10 @@ const WIZARD_STEPS = ['governance', 'ingress', 'deployment'];
 
 const PROJECT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
-function ProjectNameWidget({ id, value, onChange, label, required }) {
+function ProjectNameWidget({
+  id, value, onChange, onBlur, onFocus,
+  label, required, disabled, readonly, autofocus
+}) {
   const [dirty, setDirty] = useState(false);
   const isInvalid = !!value && !PROJECT_NAME_PATTERN.test(value);
   const showError = dirty && isInvalid;
@@ -29,9 +32,13 @@ function ProjectNameWidget({ id, value, onChange, label, required }) {
       fullWidth
       label={label}
       required={required}
+      disabled={disabled}
+      readOnly={readonly}
+      autoFocus={autofocus}
       value={value || ''}
       onChange={(e) => { setDirty(true); onChange(e.target.value); }}
-      onBlur={() => setDirty(true)}
+      onBlur={(e) => { setDirty(true); onBlur(id, e.target.value); }}
+      onFocus={(e) => onFocus(id, e.target.value)}
       error={showError}
       helperText={showError ? 'Lowercase letters, numbers and hyphens only. No spaces.' : ' '}
       placeholder="e.g. my-project-2025"
@@ -306,7 +313,7 @@ function WizardPage({ onSubmitSuccess }) {
 
     if (currentStep === 'governance') {
       const projectName = currentData?.project?.name || '';
-      if (!PROJECT_NAME_PATTERN.test(projectName)) {
+      if (projectName && !PROJECT_NAME_PATTERN.test(projectName)) {
         setStepError('Project Name must use lowercase letters, numbers and hyphens only. No spaces. e.g. my-project-2025');
         return;
       }
