@@ -97,12 +97,18 @@ const customUiSchema = {
     }
   },
   deployment: {
+    limit_range: { "ui:widget": "hidden" },
     resources: {
       "ui:title": "Resources",
       items: {
         resource_type: { "ui:widget": "hidden" },
         profiles:      { "ui:widget": "hidden" },
         clients:       { "ui:widget": "hidden" },
+        // VDI-specific fields managed by the operator
+        user:          { "ui:widget": "hidden" },
+        project:       { "ui:widget": "hidden" },
+        image:         { "ui:widget": "hidden" },
+        connection:    { "ui:widget": "hidden" },
         "ui:options": {
           anyOfTitles: RESOURCE_TYPES
         }
@@ -284,6 +290,7 @@ function WizardPage({ onSubmitSuccess }) {
   const [step, setStep] = useState(0);
   const [stepError, setStepError] = useState(null);
   const [formData, setFormData] = useState({ deployment: DEFAULT_DEPLOYMENT });
+  const [limitRange, setLimitRange] = useState(DEFAULT_DEPLOYMENT.limit_range);
   const [formKey, setFormKey] = useState(0); // force re-render
   const [error, setError] = useState(null);
   const [submitError, setSubmitError] = useState("");
@@ -393,7 +400,7 @@ function WizardPage({ onSubmitSuccess }) {
     const cr8torObj = {
       governance: formData.governance,
       ingress: formData.ingress,
-      deployment: formData.deployment
+      deployment: { ...formData.deployment, limit_range: limitRange }
     };
 
 
@@ -496,6 +503,31 @@ function WizardPage({ onSubmitSuccess }) {
             noHtml5Validate={true}
             widgets={{ ProjectNameWidget }}
           >
+            {currentStep === 'deployment' && (
+              <Box sx={{ mt: 2, mb: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  Namespace Resource Limits (LimitRange)
+                </Typography>
+                <Box display="flex" gap={2} flexWrap="wrap">
+                  {[
+                    { key: 'default_memory', label: 'Default Memory Limit', placeholder: 'e.g. 4Gi' },
+                    { key: 'default_cpu', label: 'Default CPU Limit', placeholder: 'e.g. 500m' },
+                    { key: 'default_request_memory', label: 'Default Memory Request', placeholder: 'e.g. 1Gi' },
+                    { key: 'default_request_cpu', label: 'Default CPU Request', placeholder: 'e.g. 100m' },
+                  ].map(({ key, label, placeholder }) => (
+                    <TextField
+                      key={key}
+                      label={label}
+                      placeholder={placeholder}
+                      value={limitRange?.[key] || ''}
+                      onChange={e => setLimitRange(prev => ({ ...prev, [key]: e.target.value }))}
+                      size="small"
+                      sx={{ flex: '1 1 180px' }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            )}
             <Box display="flex" justifyContent="space-between" mt={2}>
               {step > 0 && <Button variant="outlined" onClick={handleBack}>Back</Button>}
               <Button
