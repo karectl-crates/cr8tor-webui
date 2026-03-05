@@ -2,6 +2,12 @@ export const RESOURCE_TYPES = ['Resource', 'Jupyter', 'Keycloak', 'VDI', 'RStudi
 
 export const DEFAULT_DEPLOYMENT = {
   environment: { name: 'dev-tre' },
+  limit_range: {
+    default_memory: '4Gi',
+    default_cpu: '500m',
+    default_request_memory: '1Gi',
+    default_request_cpu: '100m'
+  },
   resources: [
     {
       resource_type: 'Jupyter',
