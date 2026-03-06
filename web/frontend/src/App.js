@@ -97,7 +97,6 @@ const customUiSchema = {
     }
   },
   deployment: {
-    limit_range: { "ui:widget": "hidden" },
     resources: {
       "ui:title": "Resources",
       items: {
@@ -312,7 +311,10 @@ function WizardPage({ onSubmitSuccess }) {
   if (!schema) return <Box>Loading schema...</Box>;
 
   const currentStep = WIZARD_STEPS[step];
-  const stepSchema = extractStepSchema(schema, currentStep);
+  const rawStepSchema = extractStepSchema(schema, currentStep);
+  const stepSchema = (currentStep === 'deployment' && rawStepSchema?.properties)
+    ? { ...rawStepSchema, properties: (({ limit_range, ...rest }) => rest)(rawStepSchema.properties) }
+    : rawStepSchema;
   const stepUiSchema = customUiSchema[currentStep] || {};
 
   const handleNext = () => {
@@ -496,7 +498,9 @@ function WizardPage({ onSubmitSuccess }) {
             schema={stepSchema}
             uiSchema={stepUiSchema}
             validator={validator}
-            formData={formData[currentStep] || {}}
+            formData={currentStep === 'deployment'
+              ? (({ limit_range, ...rest }) => rest)(formData[currentStep] || {})
+              : (formData[currentStep] || {})}
             onChange={handleFormChange}
             onSubmit={step === WIZARD_STEPS.length-1 ? handleSubmit : undefined}
             liveValidate={false}
