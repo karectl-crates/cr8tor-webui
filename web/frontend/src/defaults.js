@@ -1,4 +1,4 @@
-export const RESOURCE_TYPES = ['Resource', 'Jupyter', 'Keycloak', 'VDI', 'RStudio', 'Gitea'];
+export const RESOURCE_TYPES = ['Resource', 'Jupyter', 'Keycloak', 'VDI', 'RStudio', 'Gitea', 'DataSHIELD'];
 
 export const DEFAULT_DEPLOYMENT = {
   environment: { name: 'dev-tre' },
