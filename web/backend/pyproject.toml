@@ -15,6 +15,8 @@ dependencies = [
     "uvicorn",
     "linkml-runtime",
     "pyyaml",
+    "toml",
+    "requests",
     "linkml",
     "cr8tor @ git+https://github.com/karectl-crates/cr8tor.git@main",
     "cr8tor-metamodel @ git+https://github.com/karectl-crates/cr8tor-metamodel.git@main"

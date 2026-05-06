@@ -18,13 +18,46 @@ const WIZARD_STEPS = ['governance', 'ingress', 'deployment'];
 
 const PROJECT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
+const FIELD_LABEL_MAP = {
+  name: 'Project Name',
+  description: 'Description',
+  username: 'Username',
+  given_name: 'First Name',
+  family_name: 'Surname',
+  affiliation: 'Affiliation',
+  email: 'Email',
+};
+
+function formatErrorMessage(msg) {
+  if (!msg) return '';
+  let result = msg;
+  Object.entries(FIELD_LABEL_MAP).forEach(([key, label]) => {
+    result = result.replace(new RegExp(`'${key}'`, 'g'), `'${label}'`);
+  });
+  result = result.replace(/_/g, ' ');
+  return result.charAt(0).toUpperCase() + result.slice(1);
+}
+
+function applyFormatToErrorSchema(errorSchema) {
+  if (!errorSchema || typeof errorSchema !== 'object') return errorSchema;
+  const out = {};
+  for (const [k, v] of Object.entries(errorSchema)) {
+    out[k] = k === '__errors' ? v.map(formatErrorMessage) : applyFormatToErrorSchema(v);
+  }
+  return out;
+}
+
 function ProjectNameWidget({
   id, value, onChange, onBlur, onFocus,
-  label, required, disabled, readonly, autofocus
+  label, required, disabled, readonly, autofocus, rawErrors
 }) {
   const [dirty, setDirty] = useState(false);
-  const isInvalid = !!value && !PROJECT_NAME_PATTERN.test(value);
-  const showError = dirty && isInvalid;
+  const isPatternInvalid = !!value && !PROJECT_NAME_PATTERN.test(value);
+  const hasExternalError = rawErrors && rawErrors.length > 0;
+  const showError = (dirty && isPatternInvalid) || hasExternalError;
+  const errorMsg = isPatternInvalid
+    ? 'Lowercase letters, numbers and hyphens only. No spaces.'
+    : (hasExternalError ? rawErrors[0] : ' ');
 
   return (
     <TextField
@@ -40,7 +73,7 @@ function ProjectNameWidget({
       onBlur={(e) => { setDirty(true); onBlur(id, e.target.value); }}
       onFocus={(e) => onFocus(id, e.target.value)}
       error={showError}
-      helperText={showError ? 'Lowercase letters, numbers and hyphens only. No spaces.' : ' '}
+      helperText={showError ? errorMsg : ' '}
       placeholder="e.g. my-project-2025"
       variant="outlined"
     />
@@ -287,10 +320,10 @@ function SettingsPage() {
 function WizardPage({ onSubmitSuccess }) {
   const [schema, setSchema] = useState(null);
   const [step, setStep] = useState(0);
-  const [stepError, setStepError] = useState(null);
   const [formData, setFormData] = useState({ deployment: DEFAULT_DEPLOYMENT });
   const [limitRange, setLimitRange] = useState(DEFAULT_DEPLOYMENT.limit_range);
   const [formKey, setFormKey] = useState(0); // force re-render
+  const [extraErrors, setExtraErrors] = useState({});
   const [error, setError] = useState(null);
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -321,44 +354,74 @@ function WizardPage({ onSubmitSuccess }) {
     const currentData = formData[currentStep] || {};
 
     if (currentStep === 'governance') {
+      // Run email format check first, store separately
+      const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const users = currentData?.users || [];
+      const emailErrors = {};
+      users.forEach((user, idx) => {
+        if (user?.email && !EMAIL_PATTERN.test(user.email)) {
+          emailErrors[idx] = { email: { __errors: ['Please enter a valid email address'] } };
+        }
+      });
+
+      // AJV validation
+      const schemaValidation = validator.validateFormData(currentData, stepSchema);
+      const schemaErrorSchema = applyFormatToErrorSchema(schemaValidation.errorSchema || {});
+
+      // Project name pattern check
       const projectName = currentData?.project?.name || '';
+      let patternErrors = {};
       if (projectName && !PROJECT_NAME_PATTERN.test(projectName)) {
-        setStepError('Project Name must use lowercase letters, numbers and hyphens only. No spaces. e.g. my-project-2025');
+        patternErrors = {
+          project: { name: { __errors: ['Lowercase letters, numbers and hyphens only. No spaces.'] } }
+        };
+      }
+
+      // Merge AJV errors, pattern errors, then email errors (email never overwritten)
+      const mergedErrors = { ...schemaErrorSchema, ...patternErrors };
+      if (Object.keys(emailErrors).length > 0) {
+        const baseUsers = mergedErrors.users || {};
+        const mergedUsers = { ...baseUsers };
+        Object.entries(emailErrors).forEach(([idx, errObj]) => {
+          mergedUsers[idx] = { ...(mergedUsers[idx] || {}), ...errObj };
+        });
+        mergedErrors.users = mergedUsers;
+      }
+
+      const hasErrors =
+        (schemaValidation.errors && schemaValidation.errors.length > 0) ||
+        Object.keys(patternErrors).length > 0 ||
+        Object.keys(emailErrors).length > 0;
+
+      if (hasErrors) {
+        setExtraErrors(mergedErrors);
+        setFormKey(k => k + 1);
         return;
       }
+
+      setExtraErrors({});
+      setStep(step + 1);
+      return;
     }
 
     const validation = validator.validateFormData(currentData, stepSchema);
 
-    console.log(validation.errors);
-
     if (validation.errors && validation.errors.length > 0) {
-      const missingFields = validation.errors
-        .map(e => {
-          if (e.property) {
-            return e.property.replace(/^\./, '');
-          }
-          if (Array.isArray(e.name)) {
-            return e.name.join('.');
-          }
-          return '';
-        })
-        .filter(Boolean);
-      
-      const msg = missingFields.length > 0
-        ? `Please fill in: ${missingFields.join(', ')}`
-        : 'Please fill in all required fields.';
-      setStepError(msg);
+      const formatted = applyFormatToErrorSchema(validation.errorSchema || {});
+      setExtraErrors(formatted);
       setFormKey(k => k + 1);
       return;
     }
-    
-    setStepError(null);
+
+    setExtraErrors({});
     setStep(step + 1);
   };
 
   const handleFormChange = ({formData: data}) => {
     setFormData(prev => ({ ...prev, [currentStep]: data }));
+    if (Object.keys(extraErrors).length > 0) {
+      setExtraErrors({});
+    }
   };
 
   const handleBack = () => {
@@ -488,7 +551,6 @@ function WizardPage({ onSubmitSuccess }) {
           <Typography align="center" sx={{ mb: 2 }}>
             Step {step+1} of {WIZARD_STEPS.length}: {currentStep}
           </Typography>
-          {stepError && <Box color="error.main" mb={2}>{stepError}</Box>}
           {submitError && <Box color="error.main" mb={2}>{submitError}</Box>}
         <Typography align="left" gutterBottom>
             To create and provision a project, please fill in the required governance, data flow and deployment information. Once submitted, pull request will be created on your target projects repo for relevant stakeholder review. Ensure your github crednetials specified in settings.
@@ -505,6 +567,9 @@ function WizardPage({ onSubmitSuccess }) {
             onSubmit={step === WIZARD_STEPS.length-1 ? handleSubmit : undefined}
             liveValidate={false}
             noHtml5Validate={true}
+            showErrorList={false}
+            extraErrors={extraErrors}
+            transformErrors={(errors) => errors.map(err => ({ ...err, message: formatErrorMessage(err.message) }))}
             widgets={{ ProjectNameWidget }}
           >
             {currentStep === 'deployment' && (
