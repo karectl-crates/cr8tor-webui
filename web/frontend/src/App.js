@@ -7,7 +7,7 @@ import {
   CssBaseline, AppBar, Toolbar, Typography, Button, CircularProgress,
   Container, Card, CardContent, Box, Tabs, Tab,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Paper, Chip, TextField
+  Paper, Chip, TextField, Alert, Snackbar
 } from '@mui/material';
 import './users-box.css';
 import { DEFAULT_DEPLOYMENT, RESOURCE_TYPES } from './defaults';
@@ -26,6 +26,15 @@ const FIELD_LABEL_MAP = {
   family_name: 'Surname',
   affiliation: 'Affiliation',
   email: 'Email',
+  schema_name: 'Schema Name',
+  password_key: 'Password Key',
+  username_key: 'Username Key',
+  provider: 'Provider',
+  datatype: 'Data Type',
+  source: 'Source',
+  destination: 'Destination',
+  credentials: 'Credentials',
+  url: 'URL',
 };
 
 function formatErrorMessage(msg) {
@@ -47,17 +56,40 @@ function applyFormatToErrorSchema(errorSchema) {
   return out;
 }
 
+function deepMergeErrors(target, source) {
+  if (!source || typeof source !== 'object') return target;
+  if (!target || typeof target !== 'object') return source;
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    if (key === '__errors') {
+      result.__errors = [...(target.__errors || []), ...(source.__errors || [])];
+    } else if (typeof source[key] === 'object' && !Array.isArray(source[key])) {
+      result[key] = deepMergeErrors(target[key] || {}, source[key]);
+    } else {
+      result[key] = source[key];
+    }
+  }
+  return result;
+}
+
+function hasAnyErrors(obj) {
+  if (!obj || typeof obj !== 'object') return false;
+  if (obj.__errors && obj.__errors.length > 0) return true;
+  return Object.values(obj).some(v => hasAnyErrors(v));
+}
+
 function ProjectNameWidget({
   id, value, onChange, onBlur, onFocus,
   label, required, disabled, readonly, autofocus, rawErrors
 }) {
   const [dirty, setDirty] = useState(false);
+  const uniqueRawErrors = rawErrors ? [...new Set(rawErrors)] : [];
   const isPatternInvalid = !!value && !PROJECT_NAME_PATTERN.test(value);
-  const hasExternalError = rawErrors && rawErrors.length > 0;
+  const hasExternalError = uniqueRawErrors && uniqueRawErrors.length > 0;
   const showError = (dirty && isPatternInvalid) || hasExternalError;
   const errorMsg = isPatternInvalid
     ? 'Lowercase letters, numbers and hyphens only. No spaces.'
-    : (hasExternalError ? rawErrors[0] : ' ');
+    : (hasExternalError ? uniqueRawErrors[0] : ' ');
 
   return (
     <TextField
@@ -88,6 +120,7 @@ const customUiSchema = {
         "ui:title": "Project Name",
         "ui:widget": "ProjectNameWidget",
         "ui:description": "",
+        "ui:hideError": true,
       },
       reference: { "ui:title": "Reference" },
       description: { "ui:title": "Description" },
@@ -111,18 +144,45 @@ const customUiSchema = {
     }
   },
   ingress: {
+    source: {
+      "ui:title": "Source",
+      name: { "ui:title": "Name" },
+      type: { "ui:title": "Source Type" },
+      url: { "ui:title": "URL" },
+      credentials: {
+        "ui:title": "Credentials",
+        provider: { "ui:title": "Provider" },
+        password_key: { "ui:title": "Password Key" },
+        username_key: { "ui:title": "Username Key" },
+      }
+    },
+    destination: {
+      "ui:title": "Destination",
+      type: { "ui:title": "Destination Type" },
+      url: { "ui:title": "URL" },
+    },
     datasets: {
       "ui:title": "Datasets",
       items: {
         "ui:classNames": "users-box",
         "ui:title": "Dataset",
         name: { "ui:title": "Name" },
+        schema_name: { "ui:title": "Schema Name" },
         tables: {
           "ui:title": "Tables",
           items: {
             "ui:classNames": "users-box",
             "ui:title": "Table",
-            columns: { "ui:title": "Columns" }
+            name: { "ui:title": "Name" },
+            columns: {
+              "ui:title": "Columns",
+              items: {
+                "ui:classNames": "users-box",
+                "ui:title": "Column",
+                name: { "ui:title": "Name" },
+                datatype: { "ui:title": "Data Type" },
+              }
+            }
           }
         },
         locations: { "ui:widget": "hidden" }
@@ -327,6 +387,7 @@ function WizardPage({ onSubmitSuccess }) {
   const [error, setError] = useState(null);
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showValidationSnackbar, setShowValidationSnackbar] = useState(false);
   // const API_URL = process.env.REACT_APP_API_URL || '';
 
   useEffect(() => {
@@ -348,7 +409,28 @@ function WizardPage({ onSubmitSuccess }) {
   const stepSchema = (currentStep === 'deployment' && rawStepSchema?.properties)
     ? { ...rawStepSchema, properties: (({ limit_range, ...rest }) => rest)(rawStepSchema.properties) }
     : rawStepSchema;
-  const stepUiSchema = customUiSchema[currentStep] || {};
+
+  const destType = formData?.ingress?.destination?.type;
+  const ingressUiSchema = {
+    ...customUiSchema.ingress,
+    source: {
+      ...customUiSchema.ingress.source,
+      credentials: {
+        "ui:title": "Credentials",
+        provider: { "ui:title": "Provider" },
+        password_key: { "ui:title": "Password Key" },
+        username_key: { "ui:title": "Username Key" },
+      }
+    },
+    destination: {
+      ...customUiSchema.ingress.destination,
+      url: destType === 'filestore'
+        ? { "ui:widget": "hidden" }
+        : { "ui:title": "URL" },
+    }
+  };
+
+  const stepUiSchema = currentStep === 'ingress' ? ingressUiSchema : (customUiSchema[currentStep] || {});
 
   const handleNext = () => {
     const currentData = formData[currentStep] || {};
@@ -396,6 +478,7 @@ function WizardPage({ onSubmitSuccess }) {
       if (hasErrors) {
         setExtraErrors(mergedErrors);
         setFormKey(k => k + 1);
+        setShowValidationSnackbar(true);
         return;
       }
 
@@ -404,12 +487,58 @@ function WizardPage({ onSubmitSuccess }) {
       return;
     }
 
+    // Conditional: destination.url required when type is postgresql
+    const destination = currentData?.destination || {};
+    let conditionalErrors = {};
+    if (destination.type === 'postgresql' && !destination.url) {
+      conditionalErrors = {
+        destination: {
+          url: { __errors: ['URL is required when Destination Type is postgresql'] }
+        }
+      };
+    }
+
+    // If destination is postgresql, at least one dataset is required and each must have tables/columns
+    if (destination.type === 'postgresql') {
+      const datasets = currentData?.datasets || [];
+
+      if (datasets.length === 0) {
+        conditionalErrors._datasetsRequired = {
+          __errors: ['At least one dataset is required when Destination Type is postgresql']
+        };
+      }
+
+      if (datasets.length > 0) datasets.forEach((dataset, dIdx) => {
+        if (!dataset.tables || dataset.tables.length === 0) {
+          if (!conditionalErrors.datasets) conditionalErrors.datasets = {};
+          conditionalErrors.datasets[dIdx] = {
+            tables: { __errors: ['At least one table is required for postgresql datasets'] }
+          };
+        } else {
+          // Each table must have at least one column
+          dataset.tables.forEach((table, tIdx) => {
+            if (!table.columns || table.columns.length === 0) {
+              if (!conditionalErrors.datasets) conditionalErrors.datasets = {};
+              if (!conditionalErrors.datasets[dIdx]) conditionalErrors.datasets[dIdx] = {};
+              if (!conditionalErrors.datasets[dIdx].tables) conditionalErrors.datasets[dIdx].tables = {};
+              conditionalErrors.datasets[dIdx].tables[tIdx] = {
+                columns: { __errors: ['At least one column is required per table'] }
+              };
+            }
+          });
+        }
+      });
+    }
+
     const validation = validator.validateFormData(currentData, stepSchema);
 
-    if (validation.errors && validation.errors.length > 0) {
+    const hasConditionalErrors = hasAnyErrors(conditionalErrors);
+    if ((validation.errors && validation.errors.length > 0) || hasConditionalErrors) {
       const formatted = applyFormatToErrorSchema(validation.errorSchema || {});
-      setExtraErrors(formatted);
+      const mergedErrors = deepMergeErrors(formatted, conditionalErrors);
+      setExtraErrors(mergedErrors);
       setFormKey(k => k + 1);
+      setShowValidationSnackbar(true);
       return;
     }
 
@@ -417,7 +546,18 @@ function WizardPage({ onSubmitSuccess }) {
     setStep(step + 1);
   };
 
-  const handleFormChange = ({formData: data}) => {
+  const handleFormChange = ({formData: rawData}) => {
+    let data = rawData;
+    if (currentStep === 'ingress') {
+      const newDestType = data?.destination?.type;
+      const oldDestType = formData?.ingress?.destination?.type;
+      if (newDestType === 'filestore' && oldDestType !== 'filestore') {
+        data = {
+          ...data,
+          destination: { ...data.destination, url: undefined }
+        };
+      }
+    }
     setFormData(prev => ({ ...prev, [currentStep]: data }));
     if (Object.keys(extraErrors).length > 0) {
       setExtraErrors({});
@@ -597,6 +737,11 @@ function WizardPage({ onSubmitSuccess }) {
                 </Box>
               </Box>
             )}
+            {currentStep === 'ingress' && extraErrors._datasetsRequired?.__errors?.[0] && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {extraErrors._datasetsRequired.__errors[0]}
+              </Alert>
+            )}
             <Box display="flex" justifyContent="space-between" mt={2}>
               {step > 0 && <Button variant="outlined" onClick={handleBack}>Back</Button>}
               <Button
@@ -610,6 +755,16 @@ function WizardPage({ onSubmitSuccess }) {
               </Button>
             </Box>
           </Form>
+          <Snackbar
+            open={showValidationSnackbar}
+            autoHideDuration={4000}
+            onClose={() => setShowValidationSnackbar(false)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          >
+            <Alert severity="error" onClose={() => setShowValidationSnackbar(false)}>
+              Please fill in all required fields before continuing.
+            </Alert>
+          </Snackbar>
         </CardContent>
       </Card>
     </Container>
