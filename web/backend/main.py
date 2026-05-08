@@ -76,7 +76,7 @@ def validate_github_settings(settings: GithubSettings):
         "Accept": "application/vnd.github.v3+json"
     }
     url = f"https://api.github.com/repos/{settings.github_org}/{settings.github_repo}"
-    resp = requests.get(url, headers=headers)
+    resp = requests.get(url, headers=headers, timeout=15)
 
     if resp.status_code == 200:
         return {"valid": True, "message": "GitHub credentials are valid."}
@@ -112,21 +112,21 @@ def cr8tor_settings():
 def submit_project_instance(instance: dict):
     print("\n--- Received /submit payload ---\n" + json.dumps(instance, indent=2) + "\n------------------------------\n")
 
-    # missing = []
-    # if not os.getenv("GITHUB_ORG") or os.getenv("GITHUB_ORG") == "":
-    #     missing.append("GITHUB_ORG")
-    # if not os.getenv("GH_TOKEN") or os.getenv("GH_TOKEN") == "":
-    #     missing.append("GH_TOKEN")
-    # if not os.getenv("GITHUB_REPO") or os.getenv("GITHUB_REPO") == "":
-    #     missing.append("GITHUB_REPO")
-    # if not os.getenv("APPROVALS_HOST") or os.getenv("APPROVALS_HOST") == "":
-    #     missing.append("APPROVALS_HOST")
-    # if not os.getenv("APPROVALS_PORT") or os.getenv("APPROVALS_PORT") == "":
-    #     missing.append("APPROVALS_PORT")
-    # if not os.getenv("APPROVALS_API_TOKEN") or os.getenv("APPROVALS_API_TOKEN") == "":
-    #     missing.append("APPROVALS_API_TOKEN")
-    # if missing:
-    #     raise HTTPException(status_code=400, detail=f"Missing GitHub settings: {', '.join(missing)}")
+    missing = []
+    if not os.getenv("GITHUB_ORG") or os.getenv("GITHUB_ORG") == "":
+        missing.append("GITHUB_ORG")
+    if not os.getenv("GH_TOKEN") or os.getenv("GH_TOKEN") == "":
+        missing.append("GH_TOKEN")
+    if not os.getenv("GITHUB_REPO") or os.getenv("GITHUB_REPO") == "":
+        missing.append("GITHUB_REPO")
+    if not os.getenv("APPROVALS_HOST") or os.getenv("APPROVALS_HOST") == "":
+        missing.append("APPROVALS_HOST")
+    if not os.getenv("APPROVALS_PORT") or os.getenv("APPROVALS_PORT") == "":
+        missing.append("APPROVALS_PORT")
+    if not os.getenv("APPROVALS_API_TOKEN") or os.getenv("APPROVALS_API_TOKEN") == "":
+        missing.append("APPROVALS_API_TOKEN")
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing GitHub settings: {', '.join(missing)}")
 
     try:
         cr8tor_obj = Cr8tor(**instance)
