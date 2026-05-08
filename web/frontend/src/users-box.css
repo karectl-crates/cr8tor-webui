@@ -1,5 +1,43 @@
 .users-box {
   background-color: #ffffff3b;
-  border: 5px solid #939599;
+  border: 1px solid #0000001f;
   padding: 1rem;
+  /* Prevent shrinking when multiple items are added */
+  width: 100%;
+  box-sizing: border-box;
+  flex: 0 0 100%;
+  min-width: 0;
 }
+
+/* Remove box shadow from all page-level Card/Paper containers */
+.MuiCard-root {
+  box-shadow: none !important;
+}
+
+/* Force top-level RJSF array item wrappers to be full width */
+div:has(> .users-box) {
+  width: 100%;
+  min-width: 0;
+  flex: 0 0 100%;
+}
+
+/* Force top-level RJSF array containers (2 levels up) to stack vertically */
+div:has(> div > .users-box) {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* Handle nested arrays inside .users-box (tables inside datasets, columns inside tables).
+   Targets RJSF array containers at 1, 2, and 3 levels above a nested .users-box,
+   scoped so it only applies inside an existing .users-box and doesn't affect MUI globally. */
+.users-box div:has(> .users-box),
+.users-box div:has(> div > .users-box),
+.users-box div:has(> div > div > .users-box) {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
