@@ -7,13 +7,10 @@ export default function ProjectNameWidget({
   label, required, disabled, readonly, autofocus, rawErrors
 }) {
   const [dirty, setDirty] = useState(false);
-  const uniqueRawErrors = rawErrors ? [...new Set(rawErrors)] : [];
+  const hasExternalError = rawErrors && rawErrors.length > 0;
   const isPatternInvalid = !!value && !PROJECT_NAME_PATTERN.test(value);
-  const hasExternalError = uniqueRawErrors && uniqueRawErrors.length > 0;
-  const showError = (dirty && isPatternInvalid) || hasExternalError;
-  const errorMsg = isPatternInvalid
-    ? 'Lowercase letters, numbers and hyphens only. No spaces.'
-    : (hasExternalError ? uniqueRawErrors[0] : ' ');
+  const showPatternError = dirty && isPatternInvalid;
+  const showError = showPatternError || hasExternalError;
 
   return (
     <TextField
@@ -29,7 +26,7 @@ export default function ProjectNameWidget({
       onBlur={(e) => { setDirty(true); onBlur(id, e.target.value); }}
       onFocus={(e) => onFocus(id, e.target.value)}
       error={showError}
-      helperText={showError ? errorMsg : ' '}
+      helperText={showPatternError ? 'Lowercase letters, numbers and hyphens only. No spaces.' : undefined}
       placeholder="e.g. my-project-2025"
       variant="outlined"
     />

@@ -8,7 +8,6 @@ export const customUiSchema = {
         "ui:title": "Project Name",
         "ui:widget": "ProjectNameWidget",
         "ui:description": "",
-        "ui:hideError": true,
       },
       reference: { "ui:title": "Reference" },
       description: { "ui:title": "Description" },
