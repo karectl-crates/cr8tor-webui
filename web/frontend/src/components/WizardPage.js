@@ -329,11 +329,11 @@ export default function WizardPage({ onSubmitSuccess }) {
             Create Project
           </Typography>
           <Typography align="center" sx={{ mb: 2 }}>
-            Step {step+1} of {WIZARD_STEPS.length}: {currentStep}
+            Step {step+1} of {WIZARD_STEPS.length}: {currentStep.charAt(0).toUpperCase() + currentStep.slice(1)}
           </Typography>
           {submitError && <Box color="error.main" mb={2}>{submitError}</Box>}
         <Typography align="left" gutterBottom>
-            To create and provision a project, please fill in the required governance, data flow and deployment information. Once submitted, pull request will be created on your target projects repo for relevant stakeholder review. Ensure your github crednetials specified in settings.
+            To create and provision a project, please fill in the required governance, data flow and deployment information. Once submitted, pull request will be created on your target projects repo for relevant stakeholder review. Ensure your github credentials are specified in settings.
           </Typography>
           <Form
             key={`${formKey}-${step}`}
