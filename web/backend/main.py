@@ -119,12 +119,12 @@ def submit_project_instance(instance: dict):
         missing.append("GH_TOKEN")
     if not os.getenv("GITHUB_REPO") or os.getenv("GITHUB_REPO") == "":
         missing.append("GITHUB_REPO")
-    if not os.getenv("APPROVALS_HOST") or os.getenv("APPROVALS_HOST") == "":
-        missing.append("APPROVALS_HOST")
-    if not os.getenv("APPROVALS_PORT") or os.getenv("APPROVALS_PORT") == "":
-        missing.append("APPROVALS_PORT")
-    if not os.getenv("APPROVALS_API_TOKEN") or os.getenv("APPROVALS_API_TOKEN") == "":
-        missing.append("APPROVALS_API_TOKEN")
+    # if not os.getenv("APPROVALS_HOST") or os.getenv("APPROVALS_HOST") == "":
+    #     missing.append("APPROVALS_HOST")
+    # if not os.getenv("APPROVALS_PORT") or os.getenv("APPROVALS_PORT") == "":
+    #     missing.append("APPROVALS_PORT")
+    # if not os.getenv("APPROVALS_API_TOKEN") or os.getenv("APPROVALS_API_TOKEN") == "":
+    #     missing.append("APPROVALS_API_TOKEN")
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing GitHub settings: {', '.join(missing)}")
 

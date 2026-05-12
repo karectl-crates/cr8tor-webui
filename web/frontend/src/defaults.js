@@ -47,7 +47,7 @@ export const DEFAULT_DEPLOYMENT = {
       resource_type: 'Gitea',
       name: 'gitea',
       url: 'https://gitea.example.org',
-      enabled: false
+      enabled: true
     }
   ]
 };
